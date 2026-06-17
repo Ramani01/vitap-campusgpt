@@ -185,7 +185,13 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:3b")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 GEMINI_MODEL = os.environ.get("GEMINI_MODEL", "gemini-2.5-flash")
 
-class GeminiRateLimitError(Exception):
+class GeminiAPIError(Exception):
+    pass
+
+class GeminiRateLimitError(GeminiAPIError):
+    pass
+
+class GeminiAuthError(GeminiAPIError):
     pass
 
 def generate_gemini_response(prompt_text: str, max_tokens: int = 8192, enable_search: bool = False, history: Optional[List[dict]] = None) -> Optional[str]:
@@ -242,7 +248,6 @@ def generate_gemini_response(prompt_text: str, max_tokens: int = 8192, enable_se
     if enable_search:
         payload["tools"] = [{"google_search": {}}]
     try:
-
         res = requests.post(url, headers=headers, json=payload, timeout=20)
         if res.status_code == 200:
             data = res.json()
@@ -252,14 +257,18 @@ def generate_gemini_response(prompt_text: str, max_tokens: int = 8192, enable_se
                 parts = content.get("parts", [])
                 if parts:
                     return parts[0].get("text", "").strip()
+            return None
         elif res.status_code == 429:
             raise GeminiRateLimitError("Quota exceeded or rate limit hit on Gemini API.")
-        print(f"Gemini API error (Status {res.status_code}): {res.text}")
-    except GeminiRateLimitError:
+        elif res.status_code in (400, 403):
+            raise GeminiAuthError(f"Authentication/Configuration error (Status {res.status_code}): {res.text}")
+        else:
+            raise GeminiAPIError(f"Gemini API returned status {res.status_code}: {res.text}")
+    except GeminiAPIError:
         raise
     except Exception as e:
         print(f"Gemini API request failed: {e}")
-    return None
+        raise GeminiAPIError(f"Gemini API request failed: {e}")
 
 # Check for fine-tuned local model
 FINE_TUNED_MODEL_PATH = os.path.join(BASE_DIR, "fine_tuned_model")
@@ -610,24 +619,38 @@ def get_available_model() -> Optional[str]:
         pass
     return None
 
-def rewrite_query(query: str, active_model: str) -> str:
+def rewrite_query(query: str, active_model: str, history: Optional[List[dict]] = None) -> str:
     """
-    Asks Ollama or Gemini to rewrite the query into an optimized version for semantic document search.
+    Asks Ollama or Gemini to rewrite the query into an optimized version for semantic document search,
+    taking conversation history into account if available.
     """
+    history_context = ""
+    if history:
+        history_context = "Conversation history:\n"
+        for msg in history:
+            role_name = "User" if msg.get("role") == "user" else "CampusGPT"
+            history_context += f"{role_name}: {msg.get('content', '')}\n"
+        history_context += "\n"
+
     prompt = (
         "You are an AI search query optimizer.\n"
-        "Your task is to rewrite the user's input search query to make it highly specific, "
-        "autonomous, and complete. Add relevant context terms such as 'VIT-AP University' or specific regulations where appropriate. "
+        "Your task is to rewrite the user's latest input search query to make it highly specific, "
+        "autonomous, and complete, utilizing the conversation history if necessary to resolve context, pronouns, or references.\n"
+        "Add relevant context terms such as 'VIT-AP University' or specific regulations where appropriate.\n"
         "Output ONLY the optimized query. Do not add preambles, greetings, or explanations.\n\n"
-        f"Original User Query: {query}\n"
+        f"{history_context}"
+        f"Latest User Query: {query}\n"
         "Optimized Query:"
     )
     if GEMINI_API_KEY:
-        rewritten = generate_gemini_response(prompt, max_tokens=2048)
-        if rewritten:
-            if (rewritten.startswith('"') and rewritten.endswith('"')) or (rewritten.startswith("'") and rewritten.endswith("'")):
-                rewritten = rewritten[1:-1].strip()
-            return rewritten
+        try:
+            rewritten = generate_gemini_response(prompt, max_tokens=2048)
+            if rewritten:
+                if (rewritten.startswith('"') and rewritten.endswith('"')) or (rewritten.startswith("'") and rewritten.endswith("'")):
+                    rewritten = rewritten[1:-1].strip()
+                return rewritten
+        except Exception as e:
+            print("Gemini query rewriting failed, trying local Ollama / falling back:", e)
 
     try:
         res = requests.post(
@@ -840,7 +863,7 @@ def query_rag(request: QueryRequest):
         search_query = query
         if request.enable_rewrite:
             if GEMINI_API_KEY or active_model:
-                search_query = rewrite_query(query, active_model)
+                search_query = rewrite_query(query, active_model, request.history)
                 print(f"Original Query: '{query}' -> Rewritten Search Query: '{search_query}'")
 
         # 2. Candidate Retrieval
@@ -997,6 +1020,12 @@ def query_rag(request: QueryRequest):
                     answer = "⚠️ CampusGPT is currently receiving too many requests. Please try again in a few moments."
                     ollama_connected = True
                     used_model = "Gemini 2.5 Flash (Rate Limited)"
+                except GeminiAuthError as e:
+                    answer = "⚠️ CampusGPT configuration error: Invalid Gemini API key or unauthorized access. Please check your .env configuration."
+                    ollama_connected = False
+                    used_model = "Gemini API Auth Failure"
+                except GeminiAPIError as e:
+                    print(f"Gemini API error during synthesis: {e}. Falling back to local models...")
 
             
             # Scenario B: Local Fine-Tuned Model
@@ -1055,7 +1084,7 @@ def query_rag(request: QueryRequest):
                 if not active_model:
                     answer = (
                         "CampusGPT is currently offline. We are unable to load the language model. "
-                        "Please try again later or contact support if the issue persists."
+                        "Please verify your Gemini API key in the .env file, or check if the local Ollama service is running and has models installed."
                     )
                     used_model = "Offline Fallback"
                 else:
@@ -1166,6 +1195,11 @@ def query_rag(request: QueryRequest):
                         except GeminiRateLimitError:
                             answer = "⚠️ CampusGPT is currently receiving too many requests. Please try again in a few moments."
                             used_model = "Gemini 2.5 Flash (Rate Limited)"
+                        except GeminiAuthError as e:
+                            answer = "⚠️ CampusGPT configuration error: Invalid Gemini API key or unauthorized access. Please check your .env configuration."
+                            used_model = "Gemini API Auth Failure"
+                        except GeminiAPIError as e:
+                            print(f"Gemini API error during re-generation: {e}. Falling back to local models...")
                     
                     if not answer and fine_tuned_pipeline:
                         try:

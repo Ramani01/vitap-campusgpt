@@ -30,8 +30,9 @@
 Here is a comprehensive view of how **CampusGPT** processes document ingestion and handles queries:
 
 ```mermaid
-flowchart TD
-    subgraph Ingestion ["1. Document Ingestion & Sync Pipeline (Incremental)"]
+flowchart LR
+    subgraph Ingestion ["1. Document Ingestion & Sync (Incremental)"]
+        direction LR
         A[pdfs Folder] -->|Scan / Change Detection| B(sync_database_logic)
         B -->|Add / Update| C[Extract Text via PdfReader]
         B -->|Delete| D[Remove Chunks from DB]
@@ -41,7 +42,8 @@ flowchart TD
     end
 
     subgraph QueryPipeline ["2. Query Retrieval & Generation Pipeline"]
-        H[User Input Query] -->|Guardrails: Length Check| I{Valid query?}
+        direction LR
+        H[User Query] -->|Guardrails| I{Valid?}
         I -->|No| J[Return Error Alert]
         I -->|Yes| K{Query Optimizer?}
         K -->|Enabled| L[LLM Query Rewriter]
@@ -55,13 +57,13 @@ flowchart TD
         O --> Q[RRF: Reciprocal Rank Fusion]
         P --> Q
 
-        Q -->|Combined Candidate Passages| R{Rerank Enabled?}
+        Q -->|Combined Passages| R{Rerank Enabled?}
         R -->|Yes| S[Cross-Encoder: ms-marco]
         R -->|No| T[Direct Pipeline]
         S --> U[Select Top-K Chunks]
         T --> U
 
-        U --> V[Construct Context-Aware Prompt]
+        U --> V[Construct Context Prompt]
         V --> W{Select LLM Engine}
         W -->|Cloud| X[Gemini 2.5 Flash API]
         W -->|Local / Custom| Y[PEFT CPU / Ollama Qwen]
@@ -70,7 +72,7 @@ flowchart TD
         Y --> Z
 
         Z --> AA[Smart Response Sanitizer]
-        AA -->|Cleaned Text| AB[Render in Premium Dark UI]
+        AA -->|Cleaned Text| AB[Render in UI]
     end
 
     classDef database fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff;

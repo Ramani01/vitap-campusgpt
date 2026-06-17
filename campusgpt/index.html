@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CampusGPT - VIT-AP University AI Assistant</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- FontAwesome icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="app-layout">
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <button class="new-chat-btn" id="new-chat-btn">
+                    <i class="fa-solid fa-plus"></i>
+                    <span>New chat</span>
+                </button>
+                <button class="sidebar-close-btn" id="sidebar-close-btn" aria-label="Close sidebar">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <!-- Chat History List -->
+            <div class="sidebar-history" id="sidebar-history">
+                <!-- Grouped by date: Today, Yesterday, etc. -->
+                <div class="history-group" id="group-today">
+                    <div class="group-label">Today</div>
+                    <div class="group-items"></div>
+                </div>
+                <div class="history-group" id="group-yesterday">
+                    <div class="group-label">Yesterday</div>
+                    <div class="group-items"></div>
+                </div>
+                <div class="history-group" id="group-previous">
+                    <div class="group-label">Previous 7 Days</div>
+                    <div class="group-items"></div>
+                </div>
+            </div>
+            
+            <!-- Sidebar Footer -->
+            <div class="sidebar-footer">
+                <div class="db-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Document Chunks</span>
+                        <span class="stat-val" id="db-chunk-count">0</span>
+                    </div>
+                </div>
+                
+                <button class="sync-db-btn" id="sync-db-btn" title="Sync local PDF folder with database">
+                    <i class="fa-solid fa-arrows-rotate"></i>
+                    <span>Sync Database</span>
+                </button>
+                
+                <div class="ollama-status-container">
+                    <div class="status-indicator offline" id="ollama-status">
+                        <div class="status-dot"></div>
+                        <span id="ollama-status-text">Checking Ollama...</span>
+                    </div>
+                    <div class="model-badge" id="model-badge" style="display: none;">
+                        <i class="fa-solid fa-brain"></i>
+                        <span id="model-badge-text">Qwen2.5:3b</span>
+                    </div>
+                </div>
+                
+                <button class="clear-history-btn" id="clear-history-btn">
+                    <i class="fa-solid fa-trash-can"></i>
+                    <span>Clear all conversations</span>
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Header -->
+            <header class="chat-header">
+                <div class="header-left">
+                    <button class="icon-btn sidebar-toggle-btn" id="sidebar-toggle-btn" aria-label="Toggle sidebar">
+                        <i class="fa-solid fa-bars-staggered"></i>
+                    </button>
+                </div>
+                <div class="brand-centered">
+                    <i class="fa-solid fa-graduation-cap brand-icon"></i>
+                    <div class="brand-text">
+                        <h1>CampusGPT</h1>
+                        <span>VIT-AP Policy Guide</span>
+                    </div>
+                </div>
+                <div class="header-right">
+                    <button class="icon-btn settings-toggle-btn" id="settings-toggle-btn" title="RAG Settings">
+                        <i class="fa-solid fa-sliders"></i>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Chat Area -->
+            <div class="chat-area">
+                <!-- Empty State (Landing Screen) -->
+                <div class="empty-state" id="empty-state">
+                    <div class="welcome-box">
+                        <div class="welcome-logo">
+                            <i class="fa-solid fa-graduation-cap"></i>
+                        </div>
+                        <h2>University Knowledge Navigator</h2>
+                        <p>Ask questions about attendance, exams, hostels, grading, or code of conduct at VIT-AP.</p>
+                    </div>
+                    
+                    <!-- Prompt Suggestions -->
+                    <div class="suggestions-grid">
+                        <div class="suggestion-card" data-prompt="What is the attendance requirement to write examinations?">
+                            <div class="suggestion-title">Attendance Policy</div>
+                            <div class="suggestion-text">"What is the attendance requirement to write examinations?"</div>
+                            <i class="fa-solid fa-arrow-right card-arrow"></i>
+                        </div>
+                        <div class="suggestion-card" data-prompt="What are the main curfew timings and rules for hostellers?">
+                            <div class="suggestion-title">Hostel Rules</div>
+                            <div class="suggestion-text">"What are the main curfew timings and rules for hostellers?"</div>
+                            <i class="fa-solid fa-arrow-right card-arrow"></i>
+                        </div>
+                        <div class="suggestion-card" data-prompt="How is the GPA and CGPA grading system calculated?">
+                            <div class="suggestion-title">Grading System</div>
+                            <div class="suggestion-text">"How is the GPA and CGPA grading system calculated?"</div>
+                            <i class="fa-solid fa-arrow-right card-arrow"></i>
+                        </div>
+                        <div class="suggestion-card" data-prompt="What is the university policy on academic plagiarism and malpractice?">
+                            <div class="suggestion-title">Code of Conduct</div>
+                            <div class="suggestion-text">"What is the university policy on plagiarism and malpractice?"</div>
+                            <i class="fa-solid fa-arrow-right card-arrow"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Message Feed -->
+                <div class="message-feed hidden" id="message-feed">
+                    <!-- Dynamic messages will be appended here -->
+                </div>
+            </div>
+
+            <!-- Chat Footer (Input Area) -->
+            <footer class="chat-footer">
+                <div class="chat-input-container">
+                    <form id="chat-form" class="chat-form">
+                        <div class="input-wrapper">
+                            <textarea id="chat-input" placeholder="Message CampusGPT..." rows="1" autocomplete="off" required></textarea>
+                            <button type="submit" class="send-btn" id="send-btn" disabled>
+                                <i class="fa-solid fa-arrow-up"></i>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+                <div class="disclaimer">
+                    CampusGPT can make mistakes. Please verify important academic regulations and policies.
+                </div>
+            </footer>
+        </main>
+
+        <!-- Settings Panel Modal Overlay -->
+        <div class="settings-modal-overlay" id="settings-overlay">
+            <div class="settings-panel">
+                <div class="settings-panel-header">
+                    <h3><i class="fa-solid fa-sliders"></i> Agentic RAG Settings</h3>
+                    <button class="icon-btn close-settings-btn" id="close-settings-btn">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="settings-panel-body">
+                    <!-- Agentic RAG Mode Toggle -->
+                    <div class="setting-item toggle-item">
+                        <div class="setting-info">
+                            <label>Agentic RAG Mode</label>
+                            <span>Search local database and fallback to web grounding if needed</span>
+                        </div>
+                        <label class="switch-container">
+                            <input type="checkbox" id="toggle-rag" checked>
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+
+                    <!-- Category Filter -->
+                    <div class="setting-item">
+                        <label for="filter-category"><i class="fa-solid fa-filter"></i> Category Filter</label>
+                        <select id="filter-category" class="settings-select">
+                            <option value="">All Categories</option>
+                            <option value="academic">Academic</option>
+                            <option value="hostel">Hostel</option>
+                            <option value="ethics">Ethics</option>
+                            <option value="admission">Admissions</option>
+                            <option value="administration">Administration</option>
+                        </select>
+                    </div>
+
+                    <!-- Doc Type Filter -->
+                    <div class="setting-item">
+                        <label for="filter-type"><i class="fa-solid fa-file-contract"></i> Document Type</label>
+                        <select id="filter-type" class="settings-select">
+                            <option value="">All Types</option>
+                            <option value="policy">Policy</option>
+                            <option value="schedule">Schedule</option>
+                            <option value="affidavit">Affidavit</option>
+                            <option value="brochure">Brochure</option>
+                            <option value="disclosure">Disclosure</option>
+                        </select>
+                    </div>
+
+                    <!-- Context Chunks Top K -->
+                    <div class="setting-item slider-item">
+                        <div class="slider-header">
+                            <label for="slider-topk">Context Chunks (Top K)</label>
+                            <span class="slider-val" id="topk-val">4</span>
+                        </div>
+                        <input type="range" id="slider-topk" min="1" max="10" value="4" class="settings-slider">
+                    </div>
+
+                    <!-- Hybrid Search Toggle -->
+                    <div class="setting-item toggle-item">
+                        <div class="setting-info">
+                            <label>Hybrid Search</label>
+                            <span>Combine Dense Vector + Sparse BM25 retrieval</span>
+                        </div>
+                        <label class="switch-container">
+                            <input type="checkbox" id="toggle-hybrid" checked>
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+
+                    <!-- Reranking Toggle -->
+                    <div class="setting-item toggle-item">
+                        <div class="setting-info">
+                            <label>Cross-Encoder Reranking</label>
+                            <span>Rerank retrieved chunks with MS-Marco model</span>
+                        </div>
+                        <label class="switch-container">
+                            <input type="checkbox" id="toggle-rerank" checked>
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+
+                    <!-- Query Optimizer Toggle -->
+                    <div class="setting-item toggle-item">
+                        <div class="setting-info">
+                            <label>Query Optimizer</label>
+                            <span>Rewrite user query via LLM for better document matches</span>
+                        </div>
+                        <label class="switch-container">
+                            <input type="checkbox" id="toggle-rewrite">
+                            <span class="switch-slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Client-side script -->
+    <script src="app.js"></script>
+</body>
+</html>

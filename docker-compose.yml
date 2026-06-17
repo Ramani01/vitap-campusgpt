@@ -1,0 +1,45 @@
+services:
+  # Python FastAPI Application
+  backend:
+    build:
+      context: ./campusgpt
+      dockerfile: Dockerfile
+    container_name: campusgpt-backend
+    restart: always
+    env_file:
+      - ./campusgpt/.env
+    volumes:
+      - ./campusgpt/chroma_db:/app/chroma_db
+      - ./campusgpt/data:/app/data
+      - ./campusgpt/app.py:/app/app.py
+      - C:/Users/hp/.cache/huggingface:/root/.cache/huggingface
+    ports:
+      - "7860:7860"
+
+
+  # Nginx Reverse Proxy & Static Assets Server
+  nginx:
+    image: nginx:alpine
+    container_name: campusgpt-nginx
+    restart: always
+    ports:
+      - "80:80"
+    volumes:
+      # Mount custom server config
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Mount HTML/CSS/JS frontend files so Nginx can serve them directly
+      - ./campusgpt/index.html:/usr/share/nginx/html/index.html:ro
+      - ./campusgpt/style.css:/usr/share/nginx/html/style.css:ro
+      - ./campusgpt/app.js:/usr/share/nginx/html/app.js:ro
+    depends_on:
+      - backend
+
+  # Free Cloudflare Quick Tunnel
+  cloudflare-tunnel:
+    image: cloudflare/cloudflared:latest
+    container_name: campusgpt-tunnel
+    restart: always
+    command: tunnel --url http://nginx:80
+    depends_on:
+      - nginx
+

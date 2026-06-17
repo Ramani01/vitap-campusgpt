@@ -1,0 +1,22 @@
+# Credentials and local envs
+.env
+campusgpt/.env
+
+# Local database and models
+**/chroma_db/
+**/extracted/
+**/fine_tuned_model/
+
+# Python caching
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Operating system and caches
+.DS_Store
+Thumbs.db
+.cache/
+huggingface/
+.idea/
+.vscode/

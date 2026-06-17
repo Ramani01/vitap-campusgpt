@@ -21,6 +21,8 @@
 *   🔄 **Dynamic Document Syncing**: Automatically monitors the `campusgpt/data/pdfs/` folder for changes. Adding, modifying, or removing a PDF prompts incremental extraction (via `pypdf`) and updating of text chunks in ChromaDB and BM25.
 *   📝 **Smart Response Sanitizer**: Contains post-processing rules to clean up hallucinations of document paths, strip raw references (e.g. `[1]`, `VIT-AP-Academic-Regulations.pdf`), and filter out pure reference/metadata statements to provide clean, natural-language answers.
 *   🛡️ **Safety Guardrails**: Implements query validation, query length checks (< 500 characters), response content checks, and semantic context filtering.
+*   🔄 **Context-Aware Query Reformulation**: Integrates conversation history with the query optimization engine, allowing contextual follow-up questions (e.g., *"What if it's the second time?"*) to be reformulated into complete standalone queries prior to ChromaDB and BM25 search.
+*   🚦 **Robust Exception Diagnostics**: Gracefully catches specific provider exceptions (such as Gemini API key configuration errors or rate limits) and surfaces descriptive warnings to the user instead of displaying a generic offline message.
 *   🎨 **Premium Dark UI**: Responsive, modern glassmorphic web dashboard with chat-history persistence, real-time backend/Ollama status indicators, and slider-adjustable RAG parameters.
 
 ---
@@ -46,7 +48,7 @@ flowchart LR
         H[User Query] -->|Guardrails| I{Valid?}
         I -->|No| J[Return Error Alert]
         I -->|Yes| K{Query Optimizer?}
-        K -->|Enabled| L[LLM Query Rewriter]
+        K -->|Enabled| L[LLM Query Rewriter + History]
         K -->|Disabled| M[Raw Query]
         L --> N[Optimized Query]
         M --> N
@@ -95,7 +97,7 @@ Instead of rebuilding the entire collection whenever files change, CampusGPT exe
 
 #### B. Retrieval Pipeline & Fusion (RRF)
 To prevent keyword failure in vector models and semantic failure in lexical models, CampusGPT utilizes a hybrid retrieval method:
-1.  **Query Rewriting**: An LLM-powered prompt expands acronyms (e.g. "FAT", "CAT") or adds context like "VIT-AP University" to query terms.
+1.  **Query Rewriting**: An LLM-powered prompt expands acronyms (e.g. "FAT", "CAT") or adds context like "VIT-AP University" to query terms. It now incorporates **conversation history** to dynamically resolve references/pronouns in follow-up questions, turning them into standalone search queries.
 2.  **Dense Retrieval**: Utilizes ChromaDB to fetch documents matching semantic concepts.
 3.  **Sparse Retrieval**: Utilizes a Python implementation of the BM25 algorithm to capture exact matching strings, regulations, or schedule times.
 4.  **Reciprocal Rank Fusion (RRF)**: Merges retrieval lists by scoring candidates using:

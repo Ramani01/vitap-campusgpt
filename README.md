@@ -25,6 +25,90 @@
 
 ---
 
+## 🏗️ System Architecture & Workflow
+
+Here is a comprehensive view of how **CampusGPT** processes document ingestion and handles queries:
+
+```mermaid
+flowchart TD
+    subgraph Ingestion ["1. Document Ingestion & Sync Pipeline (Incremental)"]
+        A[pdfs Folder] -->|Scan / Change Detection| B(sync_database_logic)
+        B -->|Add / Update| C[Extract Text via PdfReader]
+        B -->|Delete| D[Remove Chunks from DB]
+        C --> E[Recursive Character Splitter]
+        E -->|Chunks & Metadata| F[Vector Store: ChromaDB]
+        E -->|Tokenized Corpus| G[Lexical Store: BM25]
+    end
+
+    subgraph QueryPipeline ["2. Query Retrieval & Generation Pipeline"]
+        H[User Input Query] -->|Guardrails: Length Check| I{Valid query?}
+        I -->|No| J[Return Error Alert]
+        I -->|Yes| K{Query Optimizer?}
+        K -->|Enabled| L[LLM Query Rewriter]
+        K -->|Disabled| M[Raw Query]
+        L --> N[Optimized Query]
+        M --> N
+
+        N -->|Dense Search| O[ChromaDB Vector Retrieval]
+        N -->|Sparse Search| P[BM25 Lexical Retrieval]
+
+        O --> Q[RRF: Reciprocal Rank Fusion]
+        P --> Q
+
+        Q -->|Combined Candidate Passages| R{Rerank Enabled?}
+        R -->|Yes| S[Cross-Encoder: ms-marco]
+        R -->|No| T[Direct Pipeline]
+        S --> U[Select Top-K Chunks]
+        T --> U
+
+        U --> V[Construct Context-Aware Prompt]
+        V --> W{Select LLM Engine}
+        W -->|Cloud| X[Gemini 2.5 Flash API]
+        W -->|Local / Custom| Y[PEFT CPU / Ollama Qwen]
+
+        X --> Z[Raw LLM Answer]
+        Y --> Z
+
+        Z --> AA[Smart Response Sanitizer]
+        AA -->|Cleaned Text| AB[Render in Premium Dark UI]
+    end
+
+    classDef database fill:#1e3a8a,stroke:#3b82f6,stroke-width:2px,color:#fff;
+    classDef process fill:#1f2937,stroke:#9ca3af,stroke-width:1px,color:#fff;
+    classDef decision fill:#78350f,stroke:#f59e0b,stroke-width:1.5px,color:#fff;
+    class F,G database;
+    class B,C,E,L,O,P,Q,S,V,AA process;
+    class I,K,R,W decision;
+```
+
+### 🧠 Architectural Deep Dive
+
+#### A. Incremental Database Ingestion & Sync Pipeline
+Instead of rebuilding the entire collection whenever files change, CampusGPT executes an **incremental synchronization routine** (`sync_database_logic`):
+1.  **Change Detection**: Evaluates files in `data/pdfs/` against stored document names in ChromaDB and text file modification times in `extracted/`.
+2.  **State Synchronization**:
+    *   **New/Modified PDFs**: Parsed using `PdfReader`, split using the `RecursiveCharacterTextSplitter` (configured with `chunk_size=1000` and `chunk_overlap=200`), embedded, and indexed.
+    *   **Deleted PDFs**: Dynamically queries and deletes all associated chunks from the ChromaDB collection using metadata querying (`where={"source": pdf_name}`).
+3.  **Search Index Reloading**: Rebuilds the sparse `BM25Okapi` index only when active changes occur.
+
+#### B. Retrieval Pipeline & Fusion (RRF)
+To prevent keyword failure in vector models and semantic failure in lexical models, CampusGPT utilizes a hybrid retrieval method:
+1.  **Query Rewriting**: An LLM-powered prompt expands acronyms (e.g. "FAT", "CAT") or adds context like "VIT-AP University" to query terms.
+2.  **Dense Retrieval**: Utilizes ChromaDB to fetch documents matching semantic concepts.
+3.  **Sparse Retrieval**: Utilizes a Python implementation of the BM25 algorithm to capture exact matching strings, regulations, or schedule times.
+4.  **Reciprocal Rank Fusion (RRF)**: Merges retrieval lists by scoring candidates using:
+    $$RRF\_Score(d \in D) = \sum_{m \in M} \frac{1}{k + r_m(d)}$$
+    where $r_m(d)$ is the rank of document $d$ in system $m$, and $k$ is a constant (default $60$). This ensures documents ranked highly in both modes rise to the top.
+
+#### C. Cross-Encoder Neural Reranking
+Traditional embedding-based search measures cosine similarity of independent vectors. To achieve optimal alignment, the pipeline passes the top candidates through a **Cross-Encoder model** (`ms-marco-MiniLM-L-6-v2`). The Cross-Encoder processes the query and passage *together* in self-attention layers, computing a robust similarity score that filters out irrelevant search results.
+
+#### D. Sanitization & Guardrails
+*   **Security Guardrails**: Checks input query sizes to prevent resource exhaustion attacks and filters out malicious inputs.
+*   **Response Sanitization**: Large Language Models tend to append generic citing phrases such as *"based on the provided VIT-AP Academic Regulations.pdf page 3"* or bracketed identifiers like `[1] [2]`. The `clean_llm_answer` post-processor uses regular expression engines to clean citations and discard reference-only sentences while preserving the core factual answer.
+
+---
+
 ## 📂 Project Structure
 
 ```text
